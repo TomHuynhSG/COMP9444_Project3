@@ -4,6 +4,8 @@ import tensorflow as tf
 import numpy as np
 import random
 import datetime
+import math
+import heapq
 
 """
 Hyper Parameters
@@ -11,17 +13,19 @@ Hyper Parameters
 GAMMA = 0.9  # discount factor for target Q
 INITIAL_EPSILON = 0.6  # starting value of epsilon
 FINAL_EPSILON = 0.1  # final value of epsilon
-EPSILON_DECAY_STEPS = 100
+EPSILON_DECAY_STEPS = 130
 REPLAY_SIZE = 30000  # experience replay buffer size
 BATCH_SIZE = 32  # size of minibatch
 TEST_FREQUENCY = 10  # How many episodes to run before visualizing test accuracy
 SAVE_FREQUENCY = 1000  # How many episodes to run before saving model (unused)
-NUM_EPISODES = 200  # Episode limitation
-EP_MAX_STEPS = 300  # Step limitation in an episode
+NUM_EPISODES = 400  # Episode limitation
+EP_MAX_STEPS = 450  # Step limitation in an episode
 # The number of test iters (with epsilon set to 0) to run every TEST_FREQUENCY episodes
 NUM_TEST_EPS = 4
-HIDDEN_NODES = 100
+HIDDEN_NODES = 60
 
+IS_CONTINUOUS = False
+CONTINUOUS_INTERVAL = 0.2
 
 def init(env, env_name):
     """
@@ -43,12 +47,25 @@ def init(env, env_name):
     might help in using the same code for discrete and (discretised) continuous
     action spaces
     """
-    global replay_buffer, epsilon
+    global replay_buffer, epsilon, IS_CONTINUOUS, desre2conti
     replay_buffer = []
     epsilon = INITIAL_EPSILON
+    desre2conti=[]
+
+    if (env_name=="Pendulum-v0"):
+        action_dim=int(math.ceil((env.action_space.high[0]-env.action_space.low[0])/CONTINUOUS_INTERVAL))+1
+        for i in range(action_dim):
+            next_action=env.action_space.low[0]+i*CONTINUOUS_INTERVAL
+            if (next_action)>env.action_space.high[0]:
+                next_action=env.action_space.high[0]
+            desre2conti.append(next_action)
+
+        IS_CONTINUOUS = True
+    else:
+        IS_CONTINUOUS = False
+        action_dim = env.action_space.n
 
     state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.n
     return state_dim, action_dim
 
 
@@ -101,9 +118,12 @@ def get_network(state_dim, action_dim, hidden_nodes=HIDDEN_NODES):
     w1 = random_weight([state_dim, hidden_nodes])
     b1 = random_bias([hidden_nodes])
     layer1 = tf.nn.relu(tf.matmul(state_in, w1) + b1)
-    w2 = random_weight([hidden_nodes, action_dim])
-    b2 = random_bias([action_dim])
-    q_values = tf.matmul(layer1, w2) + b2
+    w2 = random_weight([hidden_nodes, hidden_nodes])
+    b2 = random_bias([hidden_nodes])
+    layer2 = tf.nn.relu(tf.matmul(layer1, w2) + b2)
+    w3 = random_weight([hidden_nodes, action_dim])
+    b3 = random_bias([action_dim])
+    q_values = tf.matmul(layer2, w3) + b3
 
     #target_batch, state_batch, action_batch = get_train_batch(q_values, state_in, buffer)
 
@@ -156,7 +176,10 @@ def get_env_action(action):
     Modify for continous action spaces that you have discretised, see hints in
     `init()`
     """
-    return action
+    if (IS_CONTINUOUS==False):
+        return action
+    else:
+        return [desre2conti[action]]
 
 
 def update_replay_buffer(replay_buffer, state, action, reward, next_state, done,
@@ -309,13 +332,14 @@ def qtrain(env, state_dim, action_dim,
 
 
 def setup():
-    default_env_name = 'CartPole-v0'
-    # default_env_name = 'MountainCar-v0'
-    # default_env_name = 'Pendulum-v0'
+    #default_env_name = 'CartPole-v0'
+    default_env_name = 'MountainCar-v0'
+    #default_env_name = 'Pendulum-v0'
     # if env_name provided as cmd line arg, then use that
     env_name = sys.argv[1] if len(sys.argv) > 1 else default_env_name
     env = gym.make(env_name)
     state_dim, action_dim = init(env, env_name)
+
     network_vars = get_network(state_dim, action_dim)
     init_session()
     return env, state_dim, action_dim, network_vars
