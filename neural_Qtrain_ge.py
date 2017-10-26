@@ -15,7 +15,7 @@ INITIAL_EPSILON = 0.6  # starting value of epsilon
 FINAL_EPSILON = 0.1  # final value of epsilon
 EPSILON_DECAY_STEPS = 130
 REPLAY_SIZE = 30000  # experience replay buffer size
-BATCH_SIZE = 32  # size of minibatch
+BATCH_SIZE = 32 # size of minibatch
 TEST_FREQUENCY = 10  # How many episodes to run before visualizing test accuracy
 SAVE_FREQUENCY = 1000  # How many episodes to run before saving model (unused)
 NUM_EPISODES = 400  # Episode limitation
@@ -25,7 +25,7 @@ NUM_TEST_EPS = 4
 HIDDEN_NODES = 60
 
 IS_CONTINUOUS = False
-CONTINUOUS_INTERVAL = 0.2
+CONTINUOUS_INTERVAL = 1
 
 def init(env, env_name):
     """
@@ -197,9 +197,10 @@ def update_replay_buffer(replay_buffer, state, action, reward, next_state, done,
     # Tom starts
     one_hot_action = np.zeros(action_dim)
     np.put(one_hot_action, action, 1)
-    new_entry = (state, one_hot_action, reward, next_state, done)
-
-    replay_buffer.append(new_entry)
+    new_entry = (reward, state, one_hot_action, next_state, done)
+    #print(new_entry)
+    heapq.heappush(replay_buffer,new_entry)
+    #replay_buffer.append(new_entry)
 
     # Tom ends
 
@@ -226,6 +227,18 @@ def do_train_step(replay_buffer, state_in, action_in, target_in,
     writer.add_summary(summary, batch_presentations_count)
 
 
+def gauss_sample(l,n):
+	sigma= len(l)*(2/3)
+	sample=[]
+	processed_items=0
+	while (processed_items<n):
+		index = int(random.gauss(0, sigma))
+		if (index<0) or (index>(len(l)-1)):
+			continue
+		sample.append(l[index])
+		processed_items+=1
+	return sample
+
 def get_train_batch(q_values, state_in, replay_buffer):
     """
     Generate Batch samples for training by sampling the replay buffer"
@@ -245,11 +258,17 @@ def get_train_batch(q_values, state_in, replay_buffer):
     reflect the equation in the middle of slide 12 of Deep RL 1 Lecture
     notes here: https://webcms3.cse.unsw.edu.au/COMP9444/17s2/resources/12494
     """
-    minibatch = random.sample(replay_buffer, BATCH_SIZE)
+    #minibatch = random.sample(replay_buffer, BATCH_SIZE)
 
-    state_batch = [data[0] for data in minibatch]
-    action_batch = [data[1] for data in minibatch]
-    reward_batch = [data[2] for data in minibatch]
+
+    sorted_replay=heapq.nlargest(len(replay_buffer),replay_buffer)
+    minibatch = gauss_sample(sorted_replay, BATCH_SIZE)
+    #minibatch = random.sample(sorted_replay, BATCH_SIZE)
+
+
+    reward_batch = [data[0] for data in minibatch]
+    state_batch = [data[1] for data in minibatch]
+    action_batch = [data[2] for data in minibatch]
     next_state_batch = [data[3] for data in minibatch]
 
     target_batch = []
@@ -333,8 +352,7 @@ def qtrain(env, state_dim, action_dim,
 
 def setup():
     #default_env_name = 'CartPole-v0'
-    default_env_name = 'MountainCar-v0'
-    #default_env_name = 'Pendulum-v0'
+    #default_env_name = 'MountainCar-v0'default_env_name = 'Pendulum-v0'
     # if env_name provided as cmd line arg, then use that
     env_name = sys.argv[1] if len(sys.argv) > 1 else default_env_name
     env = gym.make(env_name)
